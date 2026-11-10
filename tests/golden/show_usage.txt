@@ -1,0 +1,5 @@
+exit=2
+--stdout--
+--stderr--
+usage: hc show <file>:<symbol> | <file>:L<a>-<b> | <symbol>
+       hc show <file>   (lists its symbols)

@@ -1,0 +1,12 @@
+exit=0
+--stdout--
+L12-16: class Base:
+    L13: name: str
+    L15-16: def describe(self) -> str
+L20-29: class Engine(Base):
+    L21: limit: int
+    L23-25: def run(self, steps: int) -> list[int]
+    L28-29: def label(text: str) -> str
+L32-33: async def fetch(url: str, *, retries: int=3) -> str
+L36-37: def slugify_title(title: str) -> str
+--stderr--

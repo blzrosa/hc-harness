@@ -1,0 +1,16 @@
+exit=0
+--stdout--
+# src/demo/core.py:L1-12
+ 1: """Núcleo de exemplo."""
+ 2: 
+ 3: from __future__ import annotations
+ 4: 
+ 5: from dataclasses import dataclass
+ 6: 
+ 7: from .util import clamp, slugify
+ 8: 
+ 9: DEFAULT_LIMIT: int = 5
+10: 
+11: 
+12: class Base:
+--stderr--

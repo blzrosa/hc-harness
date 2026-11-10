@@ -1,0 +1,8 @@
+exit=0
+--stdout--
+Target files: ['src/demo/core.py']
+Needs C/C++ Build: False
+Affected CTest: []
+Affected Pytest (1): ['tests/test_core.py']
+Computed in <t>
+--stderr--

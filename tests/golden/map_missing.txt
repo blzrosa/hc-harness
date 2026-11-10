@@ -1,0 +1,4 @@
+exit=2
+--stdout--
+--stderr--
+hc: no such path: <root>/nope

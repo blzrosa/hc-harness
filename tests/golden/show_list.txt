@@ -1,0 +1,13 @@
+exit=0
+--stdout--
+L9-9  DEFAULT_LIMIT
+L12-16  Base
+L13-13  Base.name
+L15-16  Base.describe
+L19-29  Engine
+L21-21  Engine.limit
+L23-25  Engine.run
+L27-29  Engine.label
+L32-33  fetch
+L36-37  slugify_title
+--stderr--

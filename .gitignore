@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Ambientes virtuais
+.venv/
+venv/
+
+# Caches de ferramentas
+.pytest_cache/
+.ruff_cache/
+.pyright/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# C/C++ (build)
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+*.o
+*.obj
+
+# Claude Code (estado local da sessão)
+.claude/SPEC.md
+.claude/HANDOFF.md
+.claude/settings.local.json
+
+# Editores / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

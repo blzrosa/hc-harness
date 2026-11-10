@@ -1,0 +1,4 @@
+exit=1
+--stdout--
+no match for 'zzz_missing'
+--stderr--

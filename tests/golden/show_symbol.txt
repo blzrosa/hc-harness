@@ -1,0 +1,7 @@
+exit=0
+--stdout--
+# src/demo/core.py:L23-25
+23:     def run(self, steps: int) -> list[int]:
+24:         """Roda `steps` passos limitados."""
+25:         return [clamp(i, 0, self.limit) for i in range(steps)]
+--stderr--

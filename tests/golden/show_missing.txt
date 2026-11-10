@@ -1,0 +1,4 @@
+exit=1
+--stdout--
+--stderr--
+hc: no symbol 'nope' in src/demo/core.py. Available: DEFAULT_LIMIT, Base, Base.name, Base.describe, Engine, Engine.limit, Engine.run, Engine.label, fetch, slugify_title

@@ -1,0 +1,48 @@
+exit=2
+--stdout--
+hc - Polyglot AST Harness & Token Compressor
+Usage:
+  hc                     Incremental check (ruff + pyright/ty + AST-affected pytest/ctest from git diff)
+  hc --all               Force full project typecheck & full test suite
+  hc <file1> [file2...]  Simulate changes on specific files and run their affected tests
+  hc map [path]          Extract AST skeleton (classes, signatures, line numbers), alphabetical, paged
+  hc impact [file...]    Show AST reverse dependency graph & affected tests
+  hc find <symbol>       Definitions (file:lines + signature) and uses of a symbol (capped)
+  hc show <file>:<sym>   Print only that symbol's body; also <file>:L10-40, or just <symbol>
+  hc edit <file> [--all] Edit by SEARCH/REPLACE blocks read from stdin (CRLF/BOM safe, all-or-nothing)
+  hc write <file>        Create a file from stdin (refuses to overwrite without --force)
+  hc guard               PreToolUse hook: reads JSON on stdin; blocks git commit/push, token-heavy
+                         reads (sed -n / cat on source, lockfiles) and file writes through the shell
+
+Options:
+  --no-cache             Ignore the "last OK" cache and run everything
+  --no-fix               Do not auto-fix / format (ruff check only)
+  --all                  With `edit`: replace every match of each SEARCH block (default: must be unique)
+  --force                With `write`: overwrite an existing file
+  --list                 With `map`: one line per file (path + top-level symbol count)
+  --prefix=P             With `map`: only files whose path (relative to root) starts with P
+  --sym=S                With `map`: only top-level symbols whose name starts with S
+  --limit=N --page=K     With `map`: page size in lines (default 150) and page number (default 1)
+  -v, --verbose          Print per-stage timings to stderr
+  --version              Print version
+
+hc edit format (whole lines; several blocks per call):
+  hc edit src/x.py <<'EOF'
+  <<<<<<< SEARCH
+  old lines
+  =======
+  new lines (empty = delete the old lines)
+  >>>>>>> REPLACE
+  EOF
+  If the text has a line `=======`, use longer markers (8+ `<`, same number of `=` and `>`).
+
+Env:
+  HC_TYPECHECKER=ty|pyright   Force a type checker (default: pyright, fallback ty)
+  HC_PLAIN=1                  Disable the live progress line even in a terminal
+  HC_GUARD_BLOCK=commit,push  Git subcommands `hc guard` blocks (default: commit,push)
+  HC_GUARD_RULES=write,read,lockfile   Extra `hc guard` rule groups that are on (default: all; git is always on)
+
+Live progress goes to stderr and only appears in an interactive terminal,
+so agents (no TTY) only ever see the final "OK in ..." line or the failures.
+--stderr--
+hc: unknown option(s): --zzz

@@ -1,0 +1,6 @@
+exit=0
+--stdout--
+# src/demo/util.py:L15-16
+15: def clamp(value: int, low: int = 0, high: int = 10) -> int:
+16:     return max(low, min(value, high))
+--stderr--

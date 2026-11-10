@@ -1,0 +1,4 @@
+exit=2
+--stdout--
+--stderr--
+usage: hc find <symbol>   (e.g. run_stage, Outcome, Class.method)

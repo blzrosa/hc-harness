@@ -1,0 +1,10 @@
+exit=0
+--stdout--
+def  src/demo/util.py:L10-12  def slugify(text: str) -> str
+use  src/demo/core.py:L7  from .util import clamp, slugify
+use  src/demo/core.py:L29  return slugify(text)
+use  src/demo/core.py:L37  return slugify(title)
+use  src/demo/util.py:L20  return slugify(text).upper()
+use  tests/test_util.py:L1  from demo.util import clamp, slugify
+use  tests/test_util.py:L9  assert slugify("X  y") == "x-y"
+--stderr--

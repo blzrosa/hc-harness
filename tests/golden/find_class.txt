@@ -1,0 +1,9 @@
+exit=0
+--stdout--
+def  src/demo/core.py:L19-29  class Engine(Base)
+use  src/demo/__init__.py:L3  from .core import Engine, slugify_title
+use  src/demo/__init__.py:L5  __all__ = ["Engine", "slugify_title"]
+use  tests/test_core.py:L1  from demo.core import Engine, slugify_title
+use  tests/test_core.py:L5  assert Engine(limit=2).run(4) == [0, 1, 2, 2]
+use  tests/test_core.py:L9  assert Engine.label("Hello World") == "hello-world"
+--stderr--
