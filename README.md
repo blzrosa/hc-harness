@@ -32,7 +32,7 @@ O extra `headroom` (`headroom-ai`) é opcional.
 ## Instalação
 
 ```bash
-git clone <url-do-repositorio>
+git clone https://github.com/blzrosa/hc-harness.git
 cd hc-harness
 uv sync
 uv tool install .          # disponibiliza o comando `hc` globalmente
