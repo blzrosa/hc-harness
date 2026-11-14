@@ -32,7 +32,7 @@ def cmd_find(root: Path, args: list[str]) -> int:
     """Definições (AST) + usos (busca por palavra) de um símbolo, em poucas linhas."""
     if not args:
         sys.stderr.write(
-            "usage: hc find <symbol>   (e.g. run_stage, Outcome, Class.method)\n"
+            "usage: lumine find <symbol>   (e.g. run_stage, Outcome, Class.method)\n"
         )
         return 2
     query = args[0]
@@ -67,7 +67,7 @@ def cmd_find(root: Path, args: list[str]) -> int:
     out = [*defs, *uses]
     if n_uses > FIND_MAX_USES:
         out.append(
-            f"... [{n_uses - FIND_MAX_USES} more uses omitted; narrow with Class.method or use hc show]"
+            f"... [{n_uses - FIND_MAX_USES} more uses omitted; narrow with Class.method or use lumine show]"
         )
     sys.stdout.write("\n".join(out) + "\n")
     return 0
@@ -116,7 +116,7 @@ def _emit_blocks(root: Path, blocks: list[tuple[Path, int, int]]) -> int:
         if take < b - a + 1:
             rest_from = a + take
             out.append(
-                f"... [{b - a + 1 - take} lines omitted; hc show {_rel(path, root)}:L{rest_from}-{b}]"
+                f"... [{b - a + 1 - take} lines omitted; lumine show {_rel(path, root)}:L{rest_from}-{b}]"
             )
     sys.stdout.write("\n".join(out) + "\n")
     return 0
@@ -126,8 +126,8 @@ def cmd_show(root: Path, cwd: Path, args: list[str]) -> int:
     """Imprime só o corpo de um símbolo (ou faixa de linhas), com números de linha."""
     if not args:
         sys.stderr.write(
-            "usage: hc show <file>:<symbol> | <file>:L<a>-<b> | <symbol>\n"
-            "       hc show <file>   (lists its symbols)\n"
+            "usage: lumine show <file>:<symbol> | <file>:L<a>-<b> | <symbol>\n"
+            "       lumine show <file>   (lists its symbols)\n"
         )
         return 2
     path, sel = _parse_show_target(cwd, args[0])
@@ -144,7 +144,7 @@ def cmd_show(root: Path, cwd: Path, args: list[str]) -> int:
             sys.stderr.write(f"hc: no symbol or file '{sel}'\n")
             return 1
         if len(hits) > SHOW_MAX_CANDIDATES:
-            lines = [f"{len(hits)} matches, use hc show <file>:<symbol>:"]
+            lines = [f"{len(hits)} matches, use lumine show<file>:<symbol>:"]
             lines += [
                 f"  {_rel(p, root)}:L{s.start}-{s.end}  {s.name}" for p, s in hits[:15]
             ]

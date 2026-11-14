@@ -2,20 +2,13 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
 from pathlib import Path
-from types import ModuleType
 from typing import Any
 
-SPEC = importlib.util.spec_from_file_location(
-    "token_audit", Path(__file__).resolve().parent.parent / "tools" / "token_audit.py"
-)
-assert SPEC and SPEC.loader
-ta: ModuleType = importlib.util.module_from_spec(SPEC)
-sys.modules["token_audit"] = ta  # dataclasses precisa achar o módulo
-SPEC.loader.exec_module(ta)
+import pytest
+
+from hc_harness import audit as ta
 
 MODEL = "claude-sonnet-5-5"
 
@@ -161,4 +154,41 @@ def test_report_renders_every_section(tmp_path: Path, capsys: Any) -> None:
     for title in ("== CUSTO ==", "== QUEM GASTOU ==", "== CACHE", "== ADOÇÃO"):
         assert title in out
     assert "bloqueios do hc guard: 1" in out
+    assert ta.main([str(tmp_path / "nada")]) == 2
+
+
+def _home(monkeypatch: pytest.MonkeyPatch, home: Path) -> None:
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+
+
+def test_default_path_is_claude_projects(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: Any
+) -> None:
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    make_project(home / ".claude" / "projects")
+    _home(monkeypatch, home)
+    assert ta.main(["--secoes=custo"]) == 0
+    assert "== CUSTO ==" in capsys.readouterr().out
+    empty = tmp_path / "vazio"
+    empty.mkdir()
+    _home(monkeypatch, empty)
     assert ta.main([]) == 2
+
+
+def test_desde_filters_sessions(tmp_path: Path, capsys: Any) -> None:
+    proj = make_project(tmp_path)  # sessão de 2026-11-01 + um subagente
+    new = proj / "bbbbbbbb-2222.jsonl"
+    new.write_text(
+        assistant(
+            "n1", "2026-11-10T10:00:00Z", 0, 100, [{"type": "text", "text": "a"}]
+        ),
+        encoding="utf-8",
+    )
+    assert ta.main([str(proj), "--secoes=custo", "--desde=2026-11-05"]) == 0
+    out = capsys.readouterr().out
+    assert "1 sessões, 0 transcrições" in out
+    assert ta.main([str(proj), "--secoes=custo", "--ate=2026-11-05"]) == 0
+    assert "1 sessões, 1 transcrições" in capsys.readouterr().out
+    assert ta.main([str(proj), "--desde=2027-01-01"]) == 2

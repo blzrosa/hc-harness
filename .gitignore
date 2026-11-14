@@ -27,6 +27,7 @@ CMakeCache.txt
 # Claude Code (estado local da sessão)
 .claude/SPEC.md
 .claude/HANDOFF.md
+.claude/SUBPLAN.md
 .claude/settings.local.json
 
 # Editores / SO

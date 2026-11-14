@@ -14,6 +14,10 @@ headroom = ["headroom-ai"]
 
 [project.scripts]
 hc = "hc_harness.cli:main"
+lumine = "hc_harness.cli:main_lumine"
+vera = "hc_harness.cli:main_vera"
+selene = "hc_harness.cli:main_selene"
+clara = "hc_harness.audit:run"
 
 [build-system]
 requires = ["hatchling"]

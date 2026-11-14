@@ -82,7 +82,7 @@ def test_pages_concatenate_to_full_output(proj: Path) -> None:
 
 def test_footer_next_command_keeps_filters(proj: Path) -> None:
     cp = hc(proj, "src", "--prefix=src/gen", "--limit=12")
-    assert "next: hc map src --prefix=src/gen --limit=12 --page=2]" in cp.stdout
+    assert "next: lumine map src --prefix=src/gen --limit=12 --page=2]" in cp.stdout
 
 
 def test_page_out_of_range(proj: Path) -> None:

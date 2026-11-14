@@ -107,7 +107,7 @@ def _pack(units: list[list[str]], limit: int) -> list[list[list[str]]]:
 
 
 def _next_command(arg: str, o: MapOptions, page: int) -> str:
-    parts = ["hc map", f'"{arg}"' if " " in arg else arg]
+    parts = ["lumine map", f'"{arg}"' if " " in arg else arg]
     if o.prefix:
         parts.append(f"--prefix={o.prefix}")
     if o.sym:

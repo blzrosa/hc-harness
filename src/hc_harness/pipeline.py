@@ -23,14 +23,19 @@ from .config import (
 from .gitutil import LAST_GIT_ERROR, get_git_changed_files
 from .index import build_index, get_affected_targets
 from .runner import (
+    BudgetExceeded,
     check_uv_sync,
     find_tool,
     fit_args,
     run_cmd,
     run_stage,
+    set_budget,
     venv_bin_dir,
 )
 from .ui import Progress, format_duration, is_interactive
+
+SLOW_RUN_S = 30.0  # acima disto a linha OK lista os tempos por estágio
+DEFAULT_TIMEOUT_S = 540.0  # abaixo do limite de 600 s da ferramenta de shell
 
 
 @dataclass(slots=True)
@@ -39,6 +44,44 @@ class Outcome:
     notes: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
     fatal: bool = False
+    queued_tests: int = 0
+
+
+def stage_totals(timings: list[tuple[str, float]]) -> dict[str, float]:
+    """Soma os segundos por estágio, agrupando pelo nome da ferramenta (1ª palavra do rótulo)."""
+    totals: dict[str, float] = {}
+    for label, secs in timings:
+        name = label.split(" ")[0]
+        totals[name] = totals.get(name, 0.0) + secs
+    return totals
+
+
+def format_ok_line(
+    total_s: float, timings: list[tuple[str, float]], suffix: str, total_text: str
+) -> str:
+    """Linha final de sucesso; acima de 30 s lista os estágios que passaram de 1 s."""
+    if total_s <= SLOW_RUN_S:
+        return f"OK in {total_text}{suffix}\n"
+    slow = sorted(
+        ((n, s) for n, s in stage_totals(timings).items() if s > 1.0),
+        key=lambda kv: -kv[1],
+    )
+    detail = ", ".join(f"{n} {s:.0f} s" for n, s in slow)
+    extra = f" ({detail})" if detail else ""
+    return f"OK in {total_s:.0f} s{extra}{suffix}\n"
+
+
+def format_timeout_block(
+    budget_s: float, stage: str, timings: list[tuple[str, float]], queued_tests: int
+) -> str:
+    spent = ", ".join(f"{n} {s:.1f} s" for n, s in stage_totals(timings).items())
+    return (
+        "=== TIMEOUT ===\n"
+        f"vera: time budget of {budget_s:.0f} s exhausted in stage: {stage}\n"
+        f"seconds per stage: {spent or 'none'}\n"
+        f"test files queued: {queued_tests}\n"
+        "This run was not recorded as OK. Raise it with --timeout=S or VERA_TIMEOUT, or narrow the run to fewer files."
+    )
 
 
 def _count(n: int) -> str:
@@ -163,9 +206,11 @@ def run_pipeline(
     use_cache: bool = True,
     fix: bool = True,
     verbose: bool = False,
+    timeout: float | None = DEFAULT_TIMEOUT_S,
 ) -> int:
     t0 = time.perf_counter_ns()
     progress = Progress(is_interactive())
+    set_budget(timeout)
     try:
         outcome = _pipeline(
             root,
@@ -174,8 +219,10 @@ def run_pipeline(
             explicit_files=explicit_files,
             use_cache=use_cache,
             fix=fix,
+            timeout=timeout,
         )
     finally:
+        set_budget(None)
         progress.stop()
 
     if (progress.enabled or verbose) and not outcome.fatal:
@@ -191,7 +238,12 @@ def run_pipeline(
     if outcome.skipped:
         notes.append(f"skipped: {', '.join(sorted(set(outcome.skipped)))}")
     suffix = f" ({', '.join(notes)})" if notes else ""
-    sys.stdout.write(f"OK in {format_duration(time.perf_counter_ns() - t0)}{suffix}\n")
+    elapsed_ns = time.perf_counter_ns() - t0
+    sys.stdout.write(
+        format_ok_line(
+            elapsed_ns / 1e9, progress.timings(), suffix, format_duration(elapsed_ns)
+        )
+    )
     return 0
 
 
@@ -203,8 +255,39 @@ def _pipeline(
     explicit_files: list[Path] | None,
     use_cache: bool,
     fix: bool,
+    timeout: float | None = None,
 ) -> Outcome:
+    """Roda o pipeline; se o orçamento de tempo acabar, devolve um bloco TIMEOUT (sem gravar o cache)."""
     outcome = Outcome()
+    try:
+        return _pipeline_body(
+            outcome,
+            root,
+            progress,
+            force_all=force_all,
+            explicit_files=explicit_files,
+            use_cache=use_cache,
+            fix=fix,
+        )
+    except BudgetExceeded as exc:
+        outcome.errors = [
+            format_timeout_block(
+                timeout or 0.0, exc.stage, progress.timings(), outcome.queued_tests
+            )
+        ]
+        return outcome
+
+
+def _pipeline_body(
+    outcome: Outcome,
+    root: Path,
+    progress: Progress,
+    *,
+    force_all: bool,
+    explicit_files: list[Path] | None,
+    use_cache: bool,
+    fix: bool,
+) -> Outcome:
 
     with progress.stage("git status"):
         changed_all = (
@@ -240,6 +323,7 @@ def _pipeline(
     else:
         touched = sorted(set(changed_files) | set(impact.py_affected))
     tag = f"all={force_all}"
+    outcome.queued_tests = len(impact.py_tests)
 
     # Atalho 2: mesmo conteúdo do último OK -> retorna sem rodar nada.
     run_cache_file = state_file(f"last_ok_{get_proj_id(root)}.hash")

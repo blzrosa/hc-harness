@@ -6,6 +6,7 @@ import hashlib
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from .compress import compress_and_log
@@ -13,9 +14,37 @@ from .config import CHILD_ENV, MAX_ARG_CHARS, get_proj_id, state_file
 from .ui import Progress
 
 
+class BudgetExceeded(Exception):
+    """O orçamento total de tempo da execução acabou; `stage` diz em qual estágio."""
+
+    def __init__(self, stage: str) -> None:
+        super().__init__(stage)
+        self.stage = stage
+
+
+_DEADLINE: list[float | None] = [None]
+
+
+def set_budget(seconds: float | None) -> None:
+    """Define (ou remove, com None) o orçamento TOTAL; cada subprocesso recebe o que resta."""
+    _DEADLINE[0] = None if seconds is None else time.monotonic() + seconds
+
+
+def _remaining() -> float | None:
+    deadline = _DEADLINE[0]
+    return None if deadline is None else deadline - time.monotonic()
+
+
 def run_cmd(
     cmd: list[str], cwd: Path | None = None, timeout: float | None = None
 ) -> tuple[int, str]:
+    budgeted = False
+    if timeout is None:
+        left = _remaining()
+        if left is not None:
+            if left <= 0:
+                raise BudgetExceeded(Path(cmd[0]).stem)
+            timeout, budgeted = left, True
     try:
         res = subprocess.run(
             cmd,
@@ -32,6 +61,8 @@ def run_cmd(
     except FileNotFoundError:
         return 127, f"command not found: {cmd[0]}"
     except subprocess.TimeoutExpired as exc:
+        if budgeted:
+            raise BudgetExceeded(Path(cmd[0]).stem) from exc
         partial = (
             exc.stdout.decode("utf-8", "replace")
             if isinstance(exc.stdout, bytes)
@@ -125,7 +156,10 @@ def run_stage(
 ) -> str | None:
     """Roda uma ferramenta mostrando `label` no spinner. Retorna o bloco de erro comprimido ou None."""
     with progress.stage(label):
-        code, out = run_cmd(cmd, root)
+        try:
+            code, out = run_cmd(cmd, root)
+        except BudgetExceeded as exc:
+            raise BudgetExceeded(label.split(" (")[0]) from exc
     if code in ok_codes:
         return None
     with progress.stage("comprimindo saída"):

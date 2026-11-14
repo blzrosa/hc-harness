@@ -51,7 +51,7 @@ class LoadedFile:
 def read_stdin() -> str:
     if sys.stdin is None or sys.stdin.isatty():
         raise EditError(
-            "reads its content from stdin (use a heredoc: hc edit FILE <<'EOF' ... EOF)"
+            "reads its content from stdin (use a heredoc: lumine edit FILE <<'EOF' ... EOF)"
         )
     data = sys.stdin.buffer.read()
     try:
@@ -74,7 +74,7 @@ def resolve_target(root: Path, cwd: Path, raw: str) -> Path:
         ) from None
     if rel.parts and rel.parts[0] in OFF_LIMITS:
         raise EditError(
-            f"{raw}: `{rel.parts[0]}/` is off limits for hc edit/write (the Edit/Write tools have their own permission rules)"
+            f"{raw}: `{rel.parts[0]}/` is off limits for lumine edit/write (the Edit/Write tools have their own permission rules)"
         )
     return path
 
@@ -216,7 +216,7 @@ def apply_block(
 ) -> tuple[str, list[int], bool]:
     """Devolve (texto novo, linhas onde casou, usou_tolerancia_de_espaco_final)."""
     if not search:
-        raise EditError(f"block {idx}: empty SEARCH (use `hc write` for new files)")
+        raise EditError(f"block {idx}: empty SEARCH (use `lumine write` for new files)")
     relaxed = False
     matches = list(_pattern(search, relaxed=False).finditer(work))
     if not matches:
@@ -254,13 +254,15 @@ def cmd_edit(
 ) -> int:
     if len(names) != 1:
         sys.stderr.write(
-            "usage: hc edit <file> [--all]   (SEARCH/REPLACE blocks on stdin; see hc --help)\n"
+            "usage: lumine edit <file> [--all]   (SEARCH/REPLACE blocks on stdin; see lumine --help)\n"
         )
         return 2
     try:
         path = resolve_target(root, cwd, names[0])
         if not path.is_file():
-            raise EditError(f"{names[0]}: no such file (use `hc write` for new files)")
+            raise EditError(
+                f"{names[0]}: no such file (use `lumine write` for new files)"
+            )
         blocks = parse_blocks(read_stdin())
         loaded = load_file(path)
         tmp_eol = "\r\n" if "\r\n" in loaded.text else "\n"
@@ -286,10 +288,10 @@ def cmd_edit(
             )
         write_atomic(path, (BOM if loaded.bom else b"") + work.encode("utf-8"))
     except EditError as exc:
-        sys.stderr.write(f"hc edit: {exc}\n(nothing was written)\n")
+        sys.stderr.write(f"lumine edit: {exc}\n(nothing was written)\n")
         return 1
     except OSError as exc:
-        sys.stderr.write(f"hc edit: {exc}\n")
+        sys.stderr.write(f"lumine edit: {exc}\n")
         return 1
     summary = (
         notes[0]
@@ -303,7 +305,7 @@ def cmd_edit(
 
 def cmd_write(root: Path, cwd: Path, names: list[str], *, force: bool = False) -> int:
     if len(names) != 1:
-        sys.stderr.write("usage: hc write <file> [--force]   (content on stdin)\n")
+        sys.stderr.write("usage: lumine write <file> [--force]   (content on stdin)\n")
         return 2
     try:
         path = resolve_target(root, cwd, names[0])
@@ -312,7 +314,7 @@ def cmd_write(root: Path, cwd: Path, names: list[str], *, force: bool = False) -
             raise EditError(f"{names[0]}: not a regular file")
         if exists and not force:
             raise EditError(
-                f"{names[0]} already exists: change it with Edit / `hc edit`, or pass --force to overwrite"
+                f"{names[0]} already exists: change it with Edit / `lumine edit`, or pass --force to overwrite"
             )
         content = read_stdin()
         if not content.strip():
@@ -330,10 +332,10 @@ def cmd_write(root: Path, cwd: Path, names: list[str], *, force: bool = False) -
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
     except EditError as exc:
-        sys.stderr.write(f"hc write: {exc}\n(nothing was written)\n")
+        sys.stderr.write(f"lumine write: {exc}\n(nothing was written)\n")
         return 1
     except OSError as exc:
-        sys.stderr.write(f"hc write: {exc}\n")
+        sys.stderr.write(f"lumine write: {exc}\n")
         return 1
     sys.stdout.write(
         f"OK wrote {rel_name(path, root)} ({content.count(chr(10))} lines)\n"

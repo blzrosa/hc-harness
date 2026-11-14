@@ -8,7 +8,12 @@ from pathlib import Path
 import pytest
 from fixture import default_env_with_src, default_prefix, run_hc
 
-from hc_harness.guard import GUARD_RULE_GROUPS, find_rule_violation, strip_hc_payloads
+from hc_harness.guard import (
+    GUARD_RULE_GROUPS,
+    find_rule_violation,
+    strip_hc_payloads,
+    strip_payloads,
+)
 
 BLOCKED_WRITE = [
     "sed -i 's/a/b/' src/a.py",
@@ -99,8 +104,66 @@ def test_messages_point_to_the_alternative() -> None:
     r = find_rule_violation("sed -n 1,5p a.py", GUARD_RULE_GROUPS)
     k = find_rule_violation("cat uv.lock", GUARD_RULE_GROUPS)
     assert w is not None and "hc edit" in w and "Edit" in w
-    assert r is not None and "hc show" in r and "Read" in r
+    assert r is not None and "lumine show a.py:L1-5" in r and "Read" in r
     assert k is not None and "git diff --stat" in k
+
+
+def _msg(cmd: str, rules: frozenset[str] = GUARD_RULE_GROUPS) -> str | None:
+    return find_rule_violation(strip_payloads(cmd), rules)
+
+
+def test_batch_message_cites_the_offending_part() -> None:
+    m = _msg("lumine show a.py:f; sed -n 1,20p docs/x.md")
+    assert m is not None
+    assert "lumine show docs/x.md:L1-20" in m and "sed -n 1,20p docs/x.md" in m
+    assert "rest of the command was valid" in m
+
+
+def test_cat_message_suggests_show_or_map() -> None:
+    m = _msg("cat a.py")
+    assert m is not None and "lumine show a.py" in m and "lumine map a.py" in m
+
+
+POLL_BLOCKED = [
+    "until [ -s out ]; do sleep 5; done",
+    "for i in $(seq 1 55); do grep -q OK f && break; sleep 3; done",
+    "while true; do\n  sleep 1\ndone",
+    "while sleep 1; do x; done",
+    'bash -c "until x; do sleep 1; done"',
+    "timeout 60 bash -c 'until x; do sleep 1; done'",
+]
+POLL_ALLOWED = [
+    'gh pr create --body "fix: x; for i in 1; do sleep 1; done"',
+    'safe-commit -m "remove for loop; while x do sleep 1; done" -- a.py',
+    'lumine edit --old "while x" --new "sleep 1"',
+    'echo "a\nfor y\nsleep 2"',
+    'echo "a\nfor y\n"; sleep 2',
+    'echo "sleep in a for loop"',
+    'grep -n "for .* sleep" f',
+    "sleep 2 && lumine map src",
+    "for f in a b; do lumine show $f; done",
+    "for f in a b; do echo $f; done; sleep 2",
+]
+
+
+@pytest.mark.parametrize("cmd", POLL_BLOCKED)
+def test_sleep_loop_blocked(cmd: str) -> None:
+    m = _msg(cmd)
+    assert m is not None and "sleep loop" in m
+
+
+@pytest.mark.parametrize("cmd", POLL_ALLOWED)
+def test_sleep_outside_loop_allowed(cmd: str) -> None:
+    assert _msg(cmd) is None
+
+
+def test_poll_group_can_be_disabled() -> None:
+    assert _msg(POLL_BLOCKED[0], frozenset({"write", "read", "lockfile"})) is None
+
+
+def test_lumine_payload_is_data() -> None:
+    cmd = "lumine write notes.md <<'EOF'\ngit commit -m x\nsed -n 1p a.py\nEOF"
+    assert _msg(cmd) is None
 
 
 def test_groups_can_be_disabled_individually() -> None:
@@ -129,7 +192,7 @@ def _guard(cmd: str, tmp_path: Path, env: dict[str, str] | None = None):
 def test_cli_blocks_with_message_and_exit_2(tmp_path: Path) -> None:
     cp = _guard("sed -n 1,5p src/a.py", tmp_path)
     assert cp.returncode == 2
-    assert "hc show" in cp.stderr
+    assert "lumine show src/a.py:L1-5" in cp.stderr
     assert cp.stdout == ""
 
 
@@ -138,6 +201,14 @@ def test_cli_hc_payload_with_git_commit_text_is_allowed(tmp_path: Path) -> None:
         _guard("hc write notes.md <<'EOF'\ngit commit -m x\nEOF", tmp_path).returncode
         == 0
     )
+
+
+def test_cli_poll_rule_blocks_and_env_disables_it(tmp_path: Path) -> None:
+    cmd = "until x; do sleep 5; done"
+    cp = _guard(cmd, tmp_path)
+    assert cp.returncode == 2 and "sleep loop" in cp.stderr
+    off = _guard(cmd, tmp_path, {"HC_GUARD_RULES": "write,read,lockfile"})
+    assert off.returncode == 0
 
 
 def test_cli_git_commit_after_a_payload_is_still_blocked(tmp_path: Path) -> None:

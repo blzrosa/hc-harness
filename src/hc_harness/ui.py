@@ -139,6 +139,11 @@ class Progress:
             sys.stderr.write("\r\x1b[2K\x1b[?25h")
             sys.stderr.flush()
 
+    def timings(self) -> list[tuple[str, float]]:
+        """Cópia dos (rótulo, segundos) dos estágios já concluídos."""
+        with self._lock:
+            return list(self._timings)
+
     def summary(self) -> str:
         return " · ".join(
             f"{name} {dur * 1000:.0f} ms" if dur < 1 else f"{name} {dur:.2f} s"

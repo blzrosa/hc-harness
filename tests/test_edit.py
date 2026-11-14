@@ -174,7 +174,7 @@ def test_noop_is_rejected(proj: Path) -> None:
 def test_missing_file_points_to_write(proj: Path) -> None:
     cp = hc(proj, ["edit", "nope.py"], block("a\n", "b\n"))
     assert cp.returncode == 1
-    assert "hc write" in cp.stderr
+    assert "lumine write" in cp.stderr
 
 
 @pytest.mark.parametrize(

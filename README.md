@@ -1,8 +1,10 @@
 # hc-harness
 
 Harness poliglota (Python/C/C++) baseada em AST e compressor de tokens para o
-[Claude Code](https://claude.com/claude-code). Expõe o comando `hc`, que roda
-só as verificações afetadas pela sua mudança e devolve uma saída compacta.
+[Claude Code](https://claude.com/claude-code). Expõe quatro comandos:
+`lumine` (navegar e editar), `vera` (verificar), `selene` (guardar) e `clara`
+(auditar custo de tokens). O comando antigo `hc` continua funcionando com todos
+os subcomandos, como alias.
 
 ## O que faz
 
@@ -14,10 +16,11 @@ só as verificações afetadas pela sua mudança e devolve uma saída compacta.
   Para C/C++: clang-format, build com cmake e ctest.
 - **Saída enxuta:** `OK in 1.2 s` quando tudo passa; senão, só os blocos das
   ferramentas que falharam.
-- **Navegação de código barata:** `map`, `find` e `show` devolvem esqueletos e
-  trechos em vez de arquivos inteiros.
-- **Guarda (`hc guard`):** hook `PreToolUse` que bloqueia `git commit`/`git push`,
+- **Navegação de código barata (`lumine`):** `map`, `find` e `show` devolvem
+  esqueletos e trechos em vez de arquivos inteiros.
+- **Guarda (`selene`):** hook `PreToolUse` que bloqueia `git commit`/`git push`,
   leituras caras de código via shell, escrita de arquivos por shell e leitura de lockfiles.
+- **Auditoria (`clara`):** mede o custo de tokens das sessões do Claude Code.
 
 ## Requisitos
 
@@ -35,28 +38,40 @@ O extra `headroom` (`headroom-ai`) é opcional.
 git clone https://github.com/blzrosa/hc-harness.git
 cd hc-harness
 uv sync
-uv tool install .          # disponibiliza o comando `hc` globalmente
+uv tool install .          # disponibiliza lumine, vera, selene, clara e hc globalmente
 ```
 
-Para desenvolvimento, use `uv run hc` ou `uv run python -m hc_harness`.
+Depois de atualizar o código, reinstale com `uv tool install --reinstall .`.
+Para desenvolvimento, use `uv run vera` ou `uv run python -m hc_harness`.
 
 ## Uso
 
-| Comando | Descrição |
-|---|---|
-| `hc` | Verificação incremental das mudanças atuais do git |
-| `hc --all` | Projeto inteiro: type check completo e toda a suíte de testes |
-| `hc <arquivo> [...]` | Trata os arquivos como alterados |
-| `hc impact [arquivo ...]` | Mostra quais testes uma mudança afeta, sem executar |
-| `hc map [caminho]` | Esqueleto AST (classes, assinaturas, linhas), paginado |
-| `hc find <símbolo>` | Definições e usos de um símbolo (máx. 25 usos) |
-| `hc show <arquivo>:<símbolo>` | Imprime só o corpo do símbolo (também `:L10-40`) |
-| `hc edit <arquivo> [--all]` | Aplica blocos SEARCH/REPLACE lidos do stdin |
-| `hc write <arquivo>` | Cria arquivo a partir do stdin (`--force` para sobrescrever) |
-| `hc guard` | Hook `PreToolUse`: lê JSON no stdin e bloqueia comandos perigosos |
+| Comando novo | Equivale a | Descrição |
+|---|---|---|
+| `vera` | `hc` | Verificação incremental das mudanças atuais do git |
+| `vera --all` | `hc --all` | Projeto inteiro: type check completo e toda a suíte de testes |
+| `vera <arquivo> [...]` | `hc <arquivo> [...]` | Trata os arquivos como alterados |
+| `lumine impact [arquivo ...]` | `hc impact` | Mostra quais testes uma mudança afeta, sem executar |
+| `lumine map [caminho]` | `hc map` | Esqueleto AST (classes, assinaturas, linhas), paginado |
+| `lumine find <símbolo>` | `hc find` | Definições e usos de um símbolo (máx. 25 usos) |
+| `lumine show <arquivo>:<símbolo>` | `hc show` | Imprime só o corpo do símbolo (também `:L10-40`) |
+| `lumine edit <arquivo> [--all]` | `hc edit` | Aplica blocos SEARCH/REPLACE lidos do stdin |
+| `lumine write <arquivo>` | `hc write` | Cria arquivo a partir do stdin (`--force` para sobrescrever) |
+| `selene` | `hc guard` | Hook `PreToolUse`: lê JSON no stdin e bloqueia comandos perigosos |
+| `clara [caminho]` | (novo) | Auditoria de tokens das sessões |
 
-Opções: `--no-cache`, `--no-fix`, `-v`/`--verbose`, `--version`.
-Em `map`: `--list`, `--prefix=P`, `--sym=S`, `--limit=N`, `--page=K`.
+Opções do `vera`: `--no-cache`, `--no-fix`, `-v`/`--verbose`, `--version` e
+`--timeout=S` (orçamento total em segundos; padrão 540; também `VERA_TIMEOUT`).
+Em `lumine map`: `--list`, `--prefix=P`, `--sym=S`, `--limit=N`, `--page=K`.
+
+### clara
+
+Sem caminho, `clara` lê as sessões em `~/.claude/projects`. Opções:
+`--secoes=`, `--exemplos=`, `--top=`, `--desde=AAAA-MM-DD` e `--ate=AAAA-MM-DD`.
+
+```bash
+clara --desde=2026-11-01 --top=10
+```
 
 ### Resultado
 
@@ -65,10 +80,10 @@ Em `map`: `--list`, `--prefix=P`, `--sym=S`, `--limit=N`, `--page=K`.
 - `OK ... (cached)`: arquivos idênticos à última execução que passou.
 - `OK ... (skipped: ruff, pytest)`: essas ferramentas não estão instaladas.
 
-### Formato do `hc edit`
+### Formato do `lumine edit`
 
 ```text
-hc edit src/x.py <<'EOF'
+lumine edit src/x.py <<'EOF'
 <<<<<<< SEARCH
 linhas antigas
 =======
@@ -86,8 +101,9 @@ o mesmo número de `=` e `>`).
 |---|---|
 | `HC_TYPECHECKER=ty\|pyright` | Força o type checker (padrão: pyright, com fallback para ty) |
 | `HC_PLAIN=1` | Desativa a linha de progresso ao vivo |
-| `HC_GUARD_BLOCK=commit,push` | Subcomandos git bloqueados pelo `hc guard` |
-| `HC_GUARD_RULES=write,read,lockfile` | Grupos de regras extras do `hc guard` |
+| `VERA_TIMEOUT=S` | Orçamento total do `vera`, em segundos (padrão 540) |
+| `HC_GUARD_BLOCK=commit,push` | Subcomandos git bloqueados pelo `selene` |
+| `HC_GUARD_RULES=write,read,lockfile` | Grupos de regras extras do `selene` |
 
 ## Integração com o Claude Code
 
@@ -100,14 +116,14 @@ Registre o guard como hook `PreToolUse` para a ferramenta `Bash` em
     "PreToolUse": [
       {
         "matcher": "Bash",
-        "hooks": [{ "type": "command", "command": "hc guard" }]
+        "hooks": [{ "type": "command", "command": "selene" }]
       }
     ]
   }
 }
 ```
 
-Depois, oriente o agente no `CLAUDE.md` a rodar `hc` após cada edição, em vez de
+Depois, oriente o agente no `CLAUDE.md` a rodar `vera` após cada edição, em vez de
 chamar ruff, pyright ou pytest diretamente.
 
 ## Estrutura do projeto
@@ -122,7 +138,7 @@ src/hc_harness/
   mapview.py    comando `map`
   navigate.py   comandos `find` e `show`
   edit.py       comandos `edit` e `write`
-  guard.py      hook `hc guard`
+  guard.py      hook `selene` (`hc guard`)
   compress.py   compressão da saída
   gitutil.py    integração com o git
   config.py     configuração
@@ -134,7 +150,7 @@ tools/          utilitários: bash_audit.py, session_cost.py
 ## Testes
 
 ```bash
-uv run hc --all
+uv run vera --all
 ```
 
 Os golden files em `tests/golden` são gerados por `tests/make_golden.py`.

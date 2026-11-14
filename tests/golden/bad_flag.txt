@@ -1,6 +1,8 @@
 exit=2
 --stdout--
 hc - Polyglot AST Harness & Token Compressor
+hc is an alias kept for compatibility. New names: lumine (map/find/show/impact/edit/write),
+vera (verification), selene (guard hook), clara (token audit).
 Usage:
   hc                     Incremental check (ruff + pyright/ty + AST-affected pytest/ctest from git diff)
   hc --all               Force full project typecheck & full test suite
@@ -17,6 +19,7 @@ Usage:
 Options:
   --no-cache             Ignore the "last OK" cache and run everything
   --no-fix               Do not auto-fix / format (ruff check only)
+  --timeout=S            Total time budget in seconds for the check (default 540; env VERA_TIMEOUT)
   --all                  With `edit`: replace every match of each SEARCH block (default: must be unique)
   --force                With `write`: overwrite an existing file
   --list                 With `map`: one line per file (path + top-level symbol count)
@@ -38,7 +41,8 @@ hc edit format (whole lines; several blocks per call):
 
 Env:
   HC_TYPECHECKER=ty|pyright   Force a type checker (default: pyright, fallback ty)
-  HC_PLAIN=1                  Disable the live progress line even in a terminal
+  VERA_TIMEOUT=S             Same as --timeout=S (default 540)
+  HC_PLAIN=1                 Disable the live progress line even in a terminal
   HC_GUARD_BLOCK=commit,push  Git subcommands `hc guard` blocks (default: commit,push)
   HC_GUARD_RULES=write,read,lockfile   Extra `hc guard` rule groups that are on (default: all; git is always on)
 

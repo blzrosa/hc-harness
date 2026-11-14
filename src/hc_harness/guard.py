@@ -84,7 +84,9 @@ def find_blocked_git(
 # Ensinam o modelo a usar a ferramenta certa: bloqueiam e dizem qual é a alternativa.
 # (O `git commit`/`git push` acima é regra dura e sempre vale; estes grupos podem ser desligados.)
 
-GUARD_RULE_GROUPS: Final[frozenset[str]] = frozenset({"write", "read", "lockfile"})
+GUARD_RULE_GROUPS: Final[frozenset[str]] = frozenset(
+    {"write", "read", "lockfile", "poll"}
+)
 
 _CODE_EXTS: Final[frozenset[str]] = frozenset({
     ".py", ".pyi", ".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx",
@@ -116,11 +118,11 @@ _HEREDOC_RE: Final[re.Pattern[str]] = re.compile(
     re.DOTALL,
 )
 _HC_PAYLOAD_RE: Final[re.Pattern[str]] = re.compile(
-    r"(\bhc(?:\.exe)?[ \t]+(?:edit|write)\b[^\n]*?)((?<!<)<<-?[ \t]*(['\"]?)([A-Za-z_]\w*)\3)([^\n]*)\n.*?\n[ \t]*\4[ \t]*(?=\n|$)",
+    r"(\b(?:hc|lumine)(?:\.exe)?[ \t]+(?:edit|write)\b[^\n]*?)((?<!<)<<-?[ \t]*(['\"]?)([A-Za-z_]\w*)\3)([^\n]*)\n.*?\n[ \t]*\4[ \t]*(?=\n|$)",
     re.DOTALL,
 )
 _PS_HERE_RE: Final[re.Pattern[str]] = re.compile(
-    r"@(['\"])[ \t]*\r?\n.*?\r?\n\1@[ \t]*\|[ \t]*hc(?:\.exe)?[ \t]+(?:edit|write)\b",
+    r"@(['\"])[ \t]*\r?\n.*?\r?\n\1@[ \t]*\|[ \t]*(?:hc|lumine)(?:\.exe)?[ \t]+(?:edit|write)\b",
     re.DOTALL,
 )
 _PY_HEREDOC_RE: Final[re.Pattern[str]] = re.compile(
@@ -140,21 +142,31 @@ _MSG_WRITE: Final[str] = (
     "`hc write <file>` for new files.\n"
 )
 _MSG_READ: Final[str] = (
-    "hc guard: `{what}` on a source/text file is blocked (token-heavy). Use `hc show <file>:<symbol>` or "
-    "`hc show <file>:L10-40`, `hc map <file>`, or `Read` with offset/limit.\n"
+    "hc guard: `{what}` on a source/text file is blocked (token-heavy). The rest of the command was valid: "
+    "only this part must change. Use {alt}, or `Read` with offset/limit.\n"
 )
+_MSG_POLL: Final[str] = (
+    "hc guard: waiting in a sleep loop re-reads the whole context on every turn; run the command in the "
+    "foreground with a timeout, or dispatch the verifier agent\n"
+)
+_SED_RANGE_RE: Final[re.Pattern[str]] = re.compile(r"^(\d+)(?:,(\d+))?p?$")
+_LOOP_OPEN: Final[frozenset[str]] = frozenset({"for", "while", "until"})
+_SLEEPERS: Final[frozenset[str]] = frozenset({"sleep", "start-sleep"})
 _MSG_LOCK: Final[str] = (
     "hc guard: reading lockfiles is blocked. Use `git diff --stat -- <lockfile>`; `uv` regenerates them.\n"
 )
 
 
-def strip_hc_payloads(command: str) -> str:
-    """Tira o corpo de `hc edit/write <<EOF ... EOF` (e do here-string do PowerShell): é dado, não comando.
-    Sem isso, um texto com `git commit` ou `sed -n` dentro do conteúdo seria barrado."""
+def strip_payloads(command: str) -> str:
+    """Tira o corpo de `hc|lumine edit/write <<EOF ... EOF` (e do here-string do PowerShell): é dado, não
+    comando. Sem isso, um texto com `git commit` ou `sed -n` dentro do conteúdo seria barrado."""
     command = _HC_PAYLOAD_RE.sub(r"\1\2\5", command)
     return _PS_HERE_RE.sub(
         lambda m: "@@ | " + m.group(0).rsplit("|", 1)[1].strip(), command
     )
+
+
+strip_hc_payloads = strip_payloads  # nome antigo, mantido por compatibilidade
 
 
 def _ext(token: str) -> str:
@@ -191,18 +203,20 @@ def _check_fragment(toks: list[str], enabled: frozenset[str]) -> str | None:
             or any(f.startswith("--in-place") for f in flags)
         ):
             return _MSG_WRITE.format(what="sed -i")
-        if (
-            "read" in enabled
-            and any("n" in f[1:] for f in short)
-            and any(_ext(o) in _READ_EXTS for o in operands)
-        ):
-            return _MSG_READ.format(what="sed -n")
-    elif (
-        "read" in enabled
-        and prog in _WHOLE_READERS
-        and any(_ext(o) in _READ_EXTS for o in operands)
-    ):
-        return _MSG_READ.format(what=prog)
+        files = [o for o in operands if _ext(o) in _READ_EXTS]
+        if "read" in enabled and any("n" in f[1:] for f in short) and files:
+            rng = next((m for o in operands if (m := _SED_RANGE_RE.match(o))), None)
+            if rng:
+                end = rng.group(2) or rng.group(1)
+                alt = f"`lumine show {files[0]}:L{rng.group(1)}-{end}`"
+            else:
+                alt = f"`lumine show {files[0]}:L10-40`"
+            return _MSG_READ.format(what=" ".join(toks), alt=alt)
+    elif "read" in enabled and prog in _WHOLE_READERS:
+        files = [o for o in operands if _ext(o) in _READ_EXTS]
+        if files:
+            alt = f"`lumine show {files[0]}` or `lumine map {files[0]}`"
+            return _MSG_READ.format(what=" ".join(toks), alt=alt)
     elif (
         "write" in enabled
         and (prog == "tee" or prog in _PS_WRITERS)
@@ -222,6 +236,68 @@ def _python_heredoc_write(command: str) -> str | None:
     return None
 
 
+_WRAPPERS: Final[frozenset[str]] = frozenset(
+    {"timeout", "sudo", "env", "nice", "nohup", "time", "command", "exec"}
+)
+
+
+def _split_unquoted(text: str) -> list[str]:
+    """Como `_SEP_RE.split`, mas só corta fora de aspas: texto entre aspas é dado e fica no fragmento."""
+    parts: list[str] = []
+    start = i = 0
+    quote = ""
+    while i < len(text):
+        ch = text[i]
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in "'\"":
+            quote = ch
+        elif m := _SEP_RE.match(text, i):
+            parts.append(text[start:i])
+            i = start = m.end()
+            continue
+        i += 1
+    parts.append(text[start:])
+    return parts
+
+
+def _sleep_in_loop(outside: str, depth_guard: int = 0) -> bool:
+    """True se algum `sleep` roda dentro de um laço until/while/for. `sleep` solto não conta.
+    Aspas são dado (só o argumento de `bash -c` é comando); laço só conta na posição de comando."""
+    if depth_guard > 3:
+        return False
+    depth = 0
+    for fragment in _split_unquoted(outside):
+        toks = _strip_env(_tokens(fragment.strip()))
+        while toks and toks[0] in {"do", "then", "else", "!"}:
+            toks = toks[1:]
+        if not toks:
+            continue
+        head = toks[0]
+        if head in _LOOP_OPEN:
+            depth += 1
+            rest = toks[1:]
+            if head != "for" and rest and _prog(rest[0]) in _SLEEPERS:
+                return True  # `while sleep 1; do ...` : sleep na condição
+        elif head == "done":
+            depth = max(0, depth - 1)
+        elif depth and _prog(head) in _SLEEPERS:
+            return True
+        if _prog(head) in _WRAPPERS:
+            toks = next(
+                (toks[k:] for k in range(1, len(toks)) if _prog(toks[k]) in _SHELLS),
+                toks,
+            )
+        if _prog(toks[0]) in _SHELLS and _prog(toks[0]) != "cmd":
+            for j in range(1, len(toks) - 1):
+                if toks[j].lower() in _SHELL_CMD_FLAGS:
+                    if _sleep_in_loop(toks[j + 1], depth_guard + 1):
+                        return True
+                    break
+    return False
+
+
 def find_rule_violation(
     command: str, enabled: frozenset[str], depth: int = 0
 ) -> str | None:
@@ -236,6 +312,8 @@ def find_rule_violation(
                 return _MSG_WRITE.format(what=f"redirect to {m.group(1)}")
         if depth == 0 and (hit := _python_heredoc_write(command)):
             return hit
+    if "poll" in enabled and _sleep_in_loop(outside):
+        return _MSG_POLL
     for fragment in _SEP_RE.split(outside):
         toks = _strip_env(_tokens(fragment.strip()))
         if hit := _check_fragment(toks, enabled):
@@ -279,9 +357,9 @@ def run_guard() -> int:
         for x in os.environ.get("HC_GUARD_BLOCK", "").split(",")
         if x.strip()
     }
-    clean = strip_hc_payloads(
+    clean = strip_payloads(
         command
-    )  # o texto de `hc edit/write <<EOF` é dado, não comando
+    )  # o texto de `hc|lumine edit/write <<EOF` é dado, não comando
     hit = find_blocked_git(clean, frozenset(env_list) or GUARD_DEFAULT_BLOCK)
     if hit is not None:
         sys.stderr.write(
