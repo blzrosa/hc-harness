@@ -132,6 +132,10 @@ Registre o guard como hook `PreToolUse` para a ferramenta `Bash` em
 Depois, oriente o agente no `CLAUDE.md` a rodar `vera` após cada edição, em vez de
 chamar ruff, pyright ou pytest diretamente.
 
+A pasta [`dotclaude/`](dotclaude/README.md) traz a configuração completa já pronta
+(`CLAUDE.md`, agentes, comandos, `settings.json` e o `safe-commit`), um `install.sh` que a
+copia para `~/.claude` e o guia de instalação numa máquina nova.
+
 ## Estrutura do projeto
 
 ```text

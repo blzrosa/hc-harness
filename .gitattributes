@@ -1,0 +1,4 @@
+# Os arquivos de dotclaude/ vão para ~/.claude e ~/.local/bin em qualquer sistema:
+# sempre LF, senão os scripts de shell quebram no Linux.
+dotclaude/** text eol=lf
+*.sh text eol=lf

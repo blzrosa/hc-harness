@@ -1,0 +1,67 @@
+{
+  "env": {
+    "ENABLE_CLAUDEAI_MCP_SERVERS": "false"
+  },
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
+  "permissions": {
+    "allow": [
+      "Bash(hc *)",
+      "Bash(lumine *)",
+      "Bash(vera *)",
+      "Bash(clara *)"
+    ],
+    "deny": [
+      "Artifact",
+      "SendFeedback",
+      "ScheduleWakeup",
+      "ReportFindings",
+      "PowerShell",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git * commit *)",
+      "Bash(git * push *)",
+      "PowerShell(git commit *)",
+      "PowerShell(git push *)",
+      "PowerShell(git * commit *)",
+      "PowerShell(git * push *)"
+    ],
+    "ask": [
+      "Bash(safe-commit)",
+      "Bash(safe-commit *)",
+      "PowerShell(safe-commit)",
+      "PowerShell(safe-commit *)"
+    ]
+  },
+  "model": "claude-fable-5-2",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "selene"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "pyright-lsp@claude-plugins-official": false,
+    "frontend-design@claude-plugins-official": true,
+    "aurora@sofia": true
+  },
+  "extraKnownMarketplaces": {
+    "sofia": {
+      "source": {
+        "source": "directory",
+        "path": "__LUMI_LIBRARIAN_DIR__"
+      }
+    }
+  },
+  "autoUpdatesChannel": "latest",
+  "theme": "dark"
+}

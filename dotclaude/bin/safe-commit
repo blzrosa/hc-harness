@@ -1,0 +1,53 @@
+#!/bin/sh
+# safe-commit: git commit local, sem trailers de IA (Co-Authored-By, "Generated with", etc.).
+# Uso:
+#   safe-commit -m "titulo" [-m "corpo"] -- <arquivo>...   adiciona os arquivos e commita
+#   safe-commit --all -m "titulo"                          git add -A e commita
+#   safe-commit -m "titulo"                                commita o que ja esta staged
+#   A mensagem tambem pode vir por stdin (heredoc) em vez de -m.
+# Nunca faz push, amend nem pula hooks. .claude/SPEC.md e .claude/HANDOFF.md nunca entram.
+set -eu
+
+die() { echo "safe-commit: $*" >&2; exit 1; }
+
+all=0
+msg=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -m)
+      [ $# -ge 2 ] || die "-m precisa de um texto"
+      if [ -n "$msg" ]; then msg="$msg
+
+$2"; else msg="$2"; fi
+      shift 2 ;;
+    -a|--all) all=1; shift ;;
+    -h|--help) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --) shift; break ;;
+    -*) die "opcao nao suportada: $1 (nao ha --amend, --no-verify nem push)" ;;
+    *) break ;;
+  esac
+done
+
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "nao e um repositorio git"
+
+if [ -z "$msg" ]; then
+  [ -t 0 ] && die "sem mensagem: use -m ou passe por stdin"
+  msg=$(cat)
+fi
+
+# Remove qualquer atribuicao de IA que tenha vindo na mensagem.
+clean=$(printf '%s\n' "$msg" | grep -viE '^[[:space:]]*(co-authored-by:.*(claude|anthropic)|claude-session:)|generated with \[?claude code|🤖' || true)
+[ -n "$(printf '%s' "$clean" | tr -d '[:space:]')" ] || die "mensagem vazia"
+
+if [ "$all" -eq 1 ]; then
+  git add -A
+elif [ $# -gt 0 ]; then
+  git add -- "$@"
+fi
+git reset -q -- .claude/SPEC.md .claude/HANDOFF.md >/dev/null 2>&1 || true
+
+git diff --cached --quiet && die "nada staged: passe os arquivos depois de -- ou use --all"
+
+printf '%s\n' "$clean" | git commit -q -F -
+git log -1 --format='%h %s'
+git show --stat --format= HEAD | tail -n 1
