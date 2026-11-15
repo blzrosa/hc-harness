@@ -67,10 +67,16 @@ Em `lumine map`: `--list`, `--prefix=P`, `--sym=S`, `--limit=N`, `--page=K`.
 ### clara
 
 Sem caminho, `clara` lê as sessões em `~/.claude/projects`. Opções:
-`--secoes=`, `--exemplos=`, `--top=`, `--desde=AAAA-MM-DD` e `--ate=AAAA-MM-DD`.
+`--secoes=`, `--exemplos=`, `--top=`, `--desde=`, `--ate=` e `--sessao=`.
+
+`--desde` e `--ate` filtram pelo início da sessão: `AAAA-MM-DD` compara o dia, e
+`AAAA-MM-DDTHH:MM` compara o instante (hora local se não houver fuso). `--sessao=` mantém só as
+sessões cujo id começa por um dos prefixos, separados por vírgula.
 
 ```bash
 clara --desde=2026-11-01 --top=10
+clara --desde=2026-11-14T19:50 --secoes=base
+clara --sessao=23eec27d --secoes=base
 ```
 
 ### Resultado

@@ -2,10 +2,12 @@
 
 Uso:
     clara [<pasta | arquivo.jsonl> ...] [--top=N] [--secoes=a,b,...]
-          [--desde=AAAA-MM-DD] [--ate=AAAA-MM-DD]
+          [--desde=AAAA-MM-DD[THH:MM]] [--ate=AAAA-MM-DD[THH:MM]] [--sessao=prefixo,...]
     clara <pasta> --exemplos=<prefixo de categoria>   (ex.: "hc (ver", "shell:for")
 
-Sem caminho, lê `~/.claude/projects`. `--desde`/`--ate` filtram pela data da primeira requisição.
+Sem caminho, lê `~/.claude/projects`. `--desde`/`--ate` filtram pelo início da sessão (a primeira
+requisição): só a data compara o dia; com `THH:MM` compara o instante, em hora local se não houver
+fuso. `--sessao` mantém só as sessões cujo id começa por um dos prefixos.
 
 Uma pasta é lida recursivamente (inclui `<sessão>/subagents/agent-*.jsonl`), então serve tanto
 `~/.claude/projects/<projeto>` quanto `~/.claude/projects` inteiro.
@@ -30,7 +32,7 @@ import statistics
 import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -877,29 +879,55 @@ class Report:
                 self.p(f"  {att[name] / self.cpt / max(n_main, 1):>7.0f}  {name}")
 
 
-def filter_by_date(
-    threads: list[Thread], desde: date | None, ate: date | None
+Bound = date | datetime | None
+
+
+def parse_bound(raw: str) -> date | datetime:
+    """`AAAA-MM-DD` vira um dia; `AAAA-MM-DDTHH:MM` vira um instante (hora local se sem fuso)."""
+    if "T" not in raw:
+        return date.fromisoformat(raw)
+    return datetime.fromisoformat(raw).astimezone()
+
+
+def _cmp(first: datetime, bound: date | datetime) -> int:
+    """Sinal de `first - bound`; contra um dia, compara só a data (como registrada, em UTC)."""
+    if isinstance(bound, datetime):
+        moment = first if first.tzinfo else first.replace(tzinfo=UTC)
+        return (moment > bound) - (moment < bound)
+    day = first.date()
+    return (day > bound) - (day < bound)
+
+
+def filter_threads(
+    threads: list[Thread], desde: Bound, ate: Bound, sessoes: list[str]
 ) -> list[Thread]:
     """Mantém as conversas cuja primeira requisição cai em [desde, ate].
 
-    Subagente herda a data da sessão principal que o criou.
+    `sessoes` são prefixos do id da sessão; vazio aceita todas.
+    Subagente herda o início da sessão principal que o criou.
     """
-    if desde is None and ate is None:
+    if desde is None and ate is None and not sessoes:
         return threads
 
-    def first(th: Thread) -> date | None:
+    def first(th: Thread) -> datetime | None:
         stamps = [r.ts for r in th.reqs if r.ts is not None]
-        return min(stamps).date() if stamps else None
+        return min(stamps) if stamps else None
 
-    main_day = {
+    main_start = {
         (t.project, t.session): first(t) for t in threads if t.kind == "principal"
     }
     kept: list[Thread] = []
     for th in threads:
-        day = main_day.get((th.project, th.session)) or first(th)
-        if day is None:
+        if sessoes and not th.session.startswith(tuple(sessoes)):
             continue
-        if (desde is None or day >= desde) and (ate is None or day <= ate):
+        start = main_start.get((th.project, th.session)) or first(th)
+        if start is None:
+            if desde is None and ate is None:
+                kept.append(th)
+            continue
+        if (desde is None or _cmp(start, desde) >= 0) and (
+            ate is None or _cmp(start, ate) <= 0
+        ):
             kept.append(th)
     return kept
 
@@ -909,22 +937,28 @@ def main(argv: list[str]) -> int:
     sections = list(SECTIONS)
     paths: list[str] = []
     examples: list[str] = []
-    desde: date | None = None
-    ate: date | None = None
+    sessoes: list[str] = []
+    desde: Bound = None
+    ate: Bound = None
+    if {"-h", "--help"} & set(argv):
+        sys.stdout.write(__doc__ or "")
+        return 0
     for a in argv:
         if a.startswith(("--desde=", "--ate=")):
             name, _, raw = a.partition("=")
             try:
-                day = date.fromisoformat(raw)
+                bound = parse_bound(raw)
             except ValueError:
                 sys.stderr.write(f"clara: invalid date in {name}: {raw!r}\n")
                 return 2
             if name == "--desde":
-                desde = day
+                desde = bound
             else:
-                ate = day
+                ate = bound
             continue
-        if a.startswith("--top="):
+        if a.startswith("--sessao="):
+            sessoes += [s for s in a.split("=", 1)[1].split(",") if s]
+        elif a.startswith("--top="):
             top = int(a.split("=", 1)[1])
         elif a.startswith("--secoes="):
             sections = [s for s in a.split("=", 1)[1].split(",") if s in SECTIONS]
@@ -936,7 +970,7 @@ def main(argv: list[str]) -> int:
     if not files:
         sys.stderr.write(__doc__ or "")
         return 2
-    threads = filter_by_date([read_thread(f) for f in files], desde, ate)
+    threads = filter_threads([read_thread(f) for f in files], desde, ate, sessoes)
     if not threads:
         sys.stderr.write("clara: no sessions in the requested period\n")
         return 2

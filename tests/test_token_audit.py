@@ -192,3 +192,36 @@ def test_desde_filters_sessions(tmp_path: Path, capsys: Any) -> None:
     assert ta.main([str(proj), "--secoes=custo", "--ate=2026-11-05"]) == 0
     assert "1 sessões, 1 transcrições" in capsys.readouterr().out
     assert ta.main([str(proj), "--desde=2027-01-01"]) == 2
+
+
+def test_desde_with_time_and_sessao(tmp_path: Path, capsys: Any) -> None:
+    proj = make_project(tmp_path)  # sessão aaaaaaaa-1111 de 2026-11-01 + um subagente
+    for name, ts in (("bbbbbbbb-2222", "10:00"), ("cccccccc-3333", "20:00")):
+        (proj / f"{name}.jsonl").write_text(
+            assistant(
+                name, f"2026-11-10T{ts}:00Z", 0, 100, [{"type": "text", "text": "a"}]
+            ),
+            encoding="utf-8",
+        )
+
+    def sessions(*args: str) -> str:
+        assert ta.main([str(proj), "--secoes=custo", *args]) == 0
+        return capsys.readouterr().out.split("\n")[1]
+
+    # o mesmo dia, separado pela hora
+    assert sessions("--desde=2026-11-10T15:00+00:00").startswith("1 sessões, 0 ")
+    assert sessions("--desde=2026-11-10", "--ate=2026-11-10T15:00+00:00").startswith(
+        "1 sessões, 0 "
+    )
+    assert sessions("--desde=2026-11-10").startswith("2 sessões, 0 ")
+    # prefixo do id; o subagente acompanha a sessão que o criou
+    assert sessions("--sessao=aaaa").startswith("1 sessões, 1 ")
+    assert sessions("--sessao=bbbb,cccc").startswith("2 sessões, 0 ")
+    assert ta.main([str(proj), "--sessao=zzzz"]) == 2
+    assert ta.main([str(proj), "--desde=2026-11-10Tx"]) == 2
+
+
+def test_help_prints_usage(capsys: Any) -> None:
+    assert ta.main(["--help"]) == 0
+    out = capsys.readouterr().out
+    assert "--sessao" in out and "== CUSTO ==" not in out
