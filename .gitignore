@@ -30,6 +30,9 @@ CMakeCache.txt
 .claude/SUBPLAN.md
 .claude/settings.local.json
 
+# Serena (configuração local do MCP)
+.serena/
+
 # Editores / SO
 .vscode/
 .idea/
